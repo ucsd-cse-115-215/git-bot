@@ -47,7 +47,7 @@ if __name__ == "__main__":
     repo_dir = sys.argv[1]
 
     while True:
-        prompt = input("> ")
+        prompt = input("gitbot> ")
         if prompt == "/exit":
             print("Goodbye!")
             break
