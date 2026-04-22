@@ -37,18 +37,26 @@ TUI  →  agent loop (SDK-provided control loop)
 
 ## Versioning
 
-### v0 — no-guardrails baseline (kept on its own branch)
+Because it's a demo project for the lecture, we will go through multiple versions:
+from deliberately naive to a more real one.
 
-Deliberately naive: TUI + agent loop + a single `bash` tool that runs arbitrary shell. No policy, no effect algebra, no approvals. Runs only in a sandbox against fake repos.
+### v0
 
-Purpose: shown to students as the starting point. Class then discusses what's wrong with it — which motivates every subsequent design decision (tool surface granularity, effect inference, policy, approvals, traces). v1 onward lives on `main`.
+No guardrails, no agent SDK, no conversation history.
+We will use what they already know: an API call to an LLM to ask for a git command, and we'll run it in subprocess.
+We'll also create some repos we can eval it on.
+Maybe add logging too.
+
+Purpose: shown to students as the starting point. Class then discusses what's wrong with it — which motivates every subsequent design decision.
+
+### v0.1
+
+We'll manually add conversation history.
+
+### v0.2
+
+We'll switch to Agents SDK (using a single `bash` tool) and add a TUI.
 
 ### v1 — guardrailed agent
 
 Everything in the design commitments above.
-
-## Out of scope for v1 (possible v2+)
-
-- Raw `git` commands at the REPL, routed through the same effect/policy pipeline as agent tool calls. Architecturally elegant but pedagogically marginal for this unit — defer.
-- Richer UI for multi-step plan explanations and batch approvals (e.g. a diff-style preview of the intended operation sequence with per-step effect badges).
-- VSCode integration.
