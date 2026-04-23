@@ -38,7 +38,8 @@ TUI  →  agent loop (SDK-provided control loop)
 ## Versioning
 
 Because it's a demo project for the lecture, we will go through multiple versions:
-from deliberately naive to a more real one.
+from deliberately naive to a more real one. Each version is a git tag on `main`
+(no per-version branches).
 
 ### v0
 
