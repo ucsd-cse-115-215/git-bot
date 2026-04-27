@@ -90,11 +90,3 @@ def stage(repo: Path, rel: str, content: str) -> None:
     _git(repo, "add", rel)
 
 
-def write_unstaged(repo: Path, rel: str, content: str) -> None:
-    """Modify a (presumably tracked) file without staging the change."""
-    write(repo, rel, content)
-
-
-def write_untracked(repo: Path, rel: str, content: str) -> None:
-    """Create a new file and leave it untracked."""
-    write(repo, rel, content)

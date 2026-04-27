@@ -11,7 +11,7 @@ from pathlib import Path
 
 from evals import oracles
 from evals.scenarios import Scenario
-from fixtures.builders import commit, init_repo, write_unstaged
+from fixtures.builders import commit, init_repo, write
 
 README_MARKER = "DRAFT: rewrite intro"
 APP_MARKER = "# new feature WIP"
@@ -34,12 +34,12 @@ def build(path: Path) -> Path:
         {"src/app.py": "def main():\n    print('hello world')\n"},
         date="2026-01-11T09:00:00",
     )
-    write_unstaged(
+    write(
         repo,
         "README.md",
         f"# demo\n\n{README_MARKER}\n\nA toy project.\n",
     )
-    write_unstaged(
+    write(
         repo,
         "src/app.py",
         f"def main():\n    print('hello world')\n    {APP_MARKER}\n",

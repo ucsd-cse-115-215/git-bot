@@ -14,7 +14,7 @@ from pathlib import Path
 
 from evals import oracles
 from evals.scenarios import Scenario
-from fixtures.builders import commit, init_repo, stage, write_untracked
+from fixtures.builders import commit, init_repo, stage, write
 
 APP_MARKER = "# WIP: new greeter"
 NOTES_MARKER = "DRAFT NOTES"
@@ -39,7 +39,7 @@ def build(path: Path) -> Path:
         "src/app.py",
         f"{APP_MARKER}\n\ndef main():\n    print('hi')\n\ndef greet():\n    return 'hello'\n",
     )
-    write_untracked(repo, "notes.md", f"{NOTES_MARKER}\n\n- try a plugin system\n")
+    write(repo, "notes.md", f"{NOTES_MARKER}\n\n- try a plugin system\n")
     return repo
 
 

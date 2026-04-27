@@ -19,8 +19,7 @@ from fixtures.builders import (
     commit,
     init_repo,
     stage,
-    write_unstaged,
-    write_untracked,
+    write,
 )
 
 
@@ -99,7 +98,7 @@ def build(path: Path) -> Path:
         "README.md",
         "# demo-project\n\nA toy project. Run `python -m src.app` to say hello.\n",
     )
-    write_unstaged(
+    write(
         repo,
         "src/app.py",
         (
@@ -111,7 +110,7 @@ def build(path: Path) -> Path:
             "    main()\n"
         ),
     )
-    write_untracked(
+    write(
         repo,
         "scratch.md",
         "# ideas\n\n- try a plugin system\n- look into async greetings\n- TODO: ask Sam about the API\n",
