@@ -1,6 +1,7 @@
 venv
 .env
 tmp/
+logs/
 
 # Python
 __pycache__/

@@ -1,7 +1,9 @@
 PYTHON := ./venv/bin/python
+INSPECT := ./venv/bin/inspect
 FIXTURE_DIR := tmp
+MODEL ?= openai/gpt-5-mini
 
-.PHONY: fixtures messy_solo clean-fixtures
+.PHONY: fixtures messy_solo clean-fixtures inspect-smoke inspect-eval inspect-view
 
 fixtures: messy_solo
 
@@ -11,3 +13,14 @@ messy_solo:
 
 clean-fixtures:
 	rm -rf $(FIXTURE_DIR)
+
+# One scenario, full epoch count from task definition. Cheap smoke test.
+inspect-smoke:
+	PYTHONPATH=. $(INSPECT) eval evals/inspect_task.py --model $(MODEL) --limit 1
+
+# Full eval: all scenarios, full epoch count from task definition.
+inspect-eval:
+	PYTHONPATH=. $(INSPECT) eval evals/inspect_task.py --model $(MODEL)
+
+inspect-view:
+	$(INSPECT) view --log-dir logs
