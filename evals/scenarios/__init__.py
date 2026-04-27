@@ -25,7 +25,9 @@ from evals.scenarios import (  # noqa: E402
     move_commit,
     move_uncommitted,
     recover_branch,
+    rename_branch,
     revert_commit,
+    squash_commits,
     undo_discard,
     undo_keep,
 )
@@ -39,4 +41,6 @@ ALL_SCENARIOS: list[Scenario] = [
     move_uncommitted.SCENARIO,
     revert_commit.SCENARIO,
     discard_one_file.SCENARIO,
+    rename_branch.SCENARIO,
+    squash_commits.SCENARIO,
 ]

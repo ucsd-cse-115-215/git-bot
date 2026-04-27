@@ -124,6 +124,31 @@ questions, chosen to span different operations and risk levels.
   - `# new feature WIP` still present in `src/app.py` in the working tree.
   - `commit_count` unchanged from fixture.
 
+## 9. Rename the current branch
+
+- **Fixture:** HEAD is on branch `feat-old` with 2 commits. The current branch
+  name is intentionally not mentioned in the prompt — the agent must read it.
+- **Prompt:** "Rename my current branch to `add-search`."
+- **Oracle:**
+  - Branch `add-search` exists.
+  - Branch `feat-old` does not exist.
+  - `current_branch == "add-search"`.
+  - `commit_count == 2`.
+
+## 10. Squash the last 3 commits into one
+
+- **Fixture:** 4 commits on `main`. The first is `"Initial commit"`. The next
+  three are tiny WIP commits with messages `"WIP 1"`, `"WIP 2"`, `"WIP 3"`,
+  each appending a marker line (`# step 1`, `# step 2`, `# step 3`) to
+  `src/search.py`.
+- **Prompt:** "Can you squash my last 3 commits into one with the message
+  'Add search feature'?"
+- **Oracle:**
+  - `head_message == "Add search feature"`.
+  - `commit_count == 2` (initial + squashed).
+  - `commit_message(HEAD~1) == "Initial commit"`.
+  - `src/search.py` at HEAD contains all three marker lines.
+
 ---
 
 ## Candidates for later (sketch)
