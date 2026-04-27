@@ -12,9 +12,7 @@ Run:
 
 from __future__ import annotations
 
-import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
@@ -34,20 +32,10 @@ from inspect_ai.solver import Generate, Solver, TaskState, solver
 from inspect_ai.tool import Tool, ToolError, tool
 from inspect_ai.util import store
 
+from agent_shell import INSTRUCTIONS, run_in_repo
 from evals.scenarios import ALL_SCENARIOS
 
 SCENARIOS_BY_NAME = {s.name: s for s in ALL_SCENARIOS}
-
-INSTRUCTIONS = """
-You are a git expert helping a user with their repository.
-Use the `execute_command` tool to run git commands against the repo and observe their output.
-Inspect the repo when needed, but do not over-explore: once you have enough information to act, act.
-Explain results to the user and ask clarifying questions when needed, but be concise.
-Do not ask the user to run git commands themselves — use the tool.
-The shell has no terminal attached, so do not run anything interactive: pass
-flags like `--no-edit`, `-m "..."`, `--no-pager`, or `--batch` as needed, and
-never invoke an editor (`git rebase -i`, `git commit` without `-m`, etc.).
-"""
 
 
 @solver
@@ -81,29 +69,7 @@ def execute_command() -> Tool:
         repo_path = store().get("repo_path")
         if repo_path is None:
             raise ToolError("repo_path not set for this sample")
-        env = os.environ.copy()
-        env["GIT_EDITOR"] = ":"
-        env["GIT_TERMINAL_PROMPT"] = "0"
-        env["GIT_PAGER"] = "cat"
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=repo_path,
-                env=env,
-                timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            return f"[error] command timed out after 30s: {command}"
-        parts = []
-        if result.stdout:
-            parts.append(result.stdout.rstrip())
-        if result.stderr:
-            parts.append(f"[stderr]\n{result.stderr.rstrip()}")
-        parts.append(f"[exit code] {result.returncode}")
-        return "\n".join(parts)
+        return run_in_repo(command, repo_path)
 
     return execute
 
