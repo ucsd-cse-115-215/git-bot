@@ -80,6 +80,10 @@ def checkout(repo: Path, name: str) -> None:
     _git(repo, "checkout", "-q", name)
 
 
+def delete_branch(repo: Path, name: str) -> None:
+    _git(repo, "branch", "-D", name)
+
+
 def stage(repo: Path, rel: str, content: str) -> None:
     """Write `content` to `rel` and stage it."""
     write(repo, rel, content)

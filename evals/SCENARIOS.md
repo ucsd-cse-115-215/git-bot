@@ -12,6 +12,12 @@ We restrict to scenarios whose success is checkable from observable repo state
 answers are out of scope; if a scenario needs a textual answer we either reframe
 it as a state change or skip it.
 
+Oracles are **one-state**: they look at the final repo only, with no
+before/after comparison. To make this work, fixtures plant identifiable tags
+— distinctive commit messages, marker strings in file contents, known commit
+counts — that oracles can check for directly. This couples each oracle to its
+fixture, which is fine: they are designed together.
+
 Multi-turn interactions are also out of scope: the agent gets one prompt and
 must finish the task without further user input. Scenarios that would
 realistically require clarification (e.g. ambiguous goals, choices the user
@@ -24,92 +30,99 @@ questions, chosen to span different operations and risk levels.
 
 ## 1. Undo last commit, keep changes
 
-- **Fixture:** repo with ≥3 commits on `main`, clean working tree.
+- **Fixture:** `main` has 3 commits with distinctive messages; the latest is
+  `"Add rate limiting"` and introduced the line `RATE_LIMIT = 100` in
+  `src/config.py`. Clean working tree. The previous commit's message is
+  `"Wire up login endpoint"`.
 - **Prompt:** "Undo my last commit but keep the changes in my working directory."
 - **Oracle:**
-  - `HEAD` is the previous commit (old `HEAD~1`).
-  - The files touched by the undone commit are present in the index or working
-    tree with the post-commit content.
-  - No new commits created.
+  - `head_message == "Wire up login endpoint"`.
+  - `commit_count == 2`.
+  - `src/config.py` in the working tree contains `RATE_LIMIT = 100` (changes
+    preserved).
 
 ## 2. Undo last commit, discard changes
 
 - **Fixture:** same as #1.
 - **Prompt:** "This last commit I made was totally misguided. Please undo it, and no need to save those changes anywhere."
 - **Oracle:**
-  - `HEAD` is old `HEAD~1`.
-  - Working tree and index match `HEAD` (clean).
-  - Old HEAD commit is no longer reachable from any branch (still in reflog,
-    that's fine).
+  - `head_message == "Wire up login endpoint"`.
+  - `commit_count == 2`.
+  - `tree_clean`.
+  - `RATE_LIMIT = 100` not present anywhere in the working tree.
 
 ## 3. Amend last commit message
 
-- **Fixture:** repo whose latest commit message has an obvious typo
-  (e.g. `"Fxi login bug"` — the intended fix is unambiguous from the message
-  itself).
+- **Fixture:** ≥3 commits; the latest has the typo'd message `"Fxi login bug"`.
 - **Prompt:** "Oops! There's a typo in my last commit message, can you fix it?"
 - **Oracle:**
-  - `HEAD` commit message equals `"Fix login bug"`.
-  - `HEAD` tree unchanged from before.
-  - `HEAD~1` unchanged.
+  - `head_message == "Fix login bug"`.
+  - `commit_count` unchanged from fixture (no new commit added).
+  - `commit_message(HEAD~1)` matches the fixture's known prior message
+    (history not rewritten beyond the tip).
 
 ## 4. Move accidental commit from `main` to a new feature branch
 
-- **Fixture:** `main` has a commit that should have been on a feature branch;
-  no remote, or remote is behind so the commit is unpublished.
+- **Fixture:** `main` has commits; the latest has the distinctive message
+  `"WIP: auth provider stub"`. No remote configured.
 - **Prompt:** "Oops! I accidentally committed this on main. Can you move my last commit to a new branch
   called `feature-auth` and reset main?"
 - **Oracle:**
-  - Branch `feature-auth` exists and points at the original commit sha.
-  - `main` points at that commit's parent.
-  - Working tree clean.
+  - Branch `feature-auth` exists.
+  - `commit_message(feature-auth) == "WIP: auth provider stub"`.
+  - `head_message` of `main` equals the fixture's known second-latest message.
+  - `tree_clean`.
 
 ## 5. Recover a deleted branch
 
-- **Fixture:** repo where a branch `experiments` was created, committed to, then
-  deleted (commit still in reflog).
+- **Fixture:** branch `experiments` was created with a tip commit message
+  `"Spike: try Redis cache"`, then deleted. The commit remains in the reflog.
 - **Prompt:** "OMG! I accidentally deleted the `experiments` branch. Can you bring
   it back?"
 - **Oracle:**
   - Branch `experiments` exists.
-  - It points at the original tip sha (recoverable via reflog).
+  - `commit_message(experiments) == "Spike: try Redis cache"`.
 
 ## 6. Move uncommitted changes to a new branch
 
-- **Fixture:** clean history on `main`, but working tree has staged + unstaged
-  changes the user wants to isolate.
+- **Fixture:** clean history on `main`. Working tree has a staged change to
+  `src/app.py` containing the marker `# WIP: new greeter` and an untracked file
+  `notes.md` containing `DRAFT NOTES`.
 - **Prompt:** "I started working on main by mistake. Move my changes to a new
   branch called `wip-changes`."
 - **Oracle:**
-  - Branch `wip-changes` exists at same sha as `main`'s old tip (no commit was
-    required).
-  - HEAD is on `wip-changes`.
-  - Working tree still contains the changes (nothing lost).
+  - Branch `wip-changes` exists.
+  - `current_branch == "wip-changes"`.
+  - `src/app.py` in the working tree contains `# WIP: new greeter`.
+  - `notes.md` in the working tree contains `DRAFT NOTES`.
+  - `commit_count == fixture's original count` (no new commit created).
 
 ## 7. Revert a specific commit without rewriting history
 
-- **Fixture:** `main` has history `A — B — C` where `B` has a distinctive,
-  identifiable commit message (e.g. `"Add rate limiting to login endpoint"`)
-  and `C` is unrelated. The user refers to `B` by what it did, not by sha.
+- **Fixture:** `main` has history `A — B — C` where `B` has the message
+  `"Add rate limiting to login endpoint"` and introduced the line
+  `RATE_LIMIT = 100` in `src/config.py`. `C` is unrelated (e.g. updates
+  README).
 - **Prompt:** "The rate limiting on the login endpoint is causing problems in
   production. Can you revert that change? I've already pushed so don't rewrite
   history."
 - **Oracle:**
-  - `HEAD` is a new commit `D` whose parent is `C`.
-  - The tree at `D` equals what you'd get by applying `C`'s diff on top of `A`
-    (i.e. `B`'s changes are reverted).
-  - `A`, `B`, `C` are all still reachable.
+  - `RATE_LIMIT = 100` not present in `src/config.py` at HEAD.
+  - `"Add rate limiting to login endpoint"` still appears in the log
+    (B is still reachable; history not rewritten).
+  - `commit_count == 4` (one new revert commit added on top).
 
 ## 8. Discard local changes to one file
 
-- **Fixture:** working tree has modifications to two tracked files,
-  `src/app.py` and `README.md`; other files clean.
+- **Fixture:** working tree has modifications to two tracked files. `README.md`
+  has the marker line `DRAFT: rewrite intro` injected. `src/app.py` has the
+  marker comment `# new feature WIP` injected. Other files clean.
 - **Prompt:** "Throw away my local changes to `README.md` (but keep all the other
   local changes)."
 - **Oracle:**
-  - `README.md` matches `HEAD`.
-  - `src/app.py` still has the local modifications.
-  - No commits created.
+  - `DRAFT: rewrite intro` not present in `README.md` in the working tree.
+  - `# new feature WIP` still present in `src/app.py` in the working tree.
+  - `commit_count` unchanged from fixture.
 
 ---
 
