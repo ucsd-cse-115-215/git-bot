@@ -44,9 +44,9 @@ What's *not* a first-class type in this DSL:
 
 - `Diff`. Diffs are either *materialized as text* for the agent to read
   (`inspect_diff` returns a unified diff string) or *implicit* in the
-  `(from, to)` arguments to `compute_merge`. We never pass a diff value
+  `(from, to)` arguments to `apply_diff`. We never pass a diff value
   between tools. This keeps the type universe small without losing
-  expressiveness — `compute_merge` is exactly "apply a diff," and merge,
+  expressiveness — `apply_diff` is exactly "apply a diff," and merge,
   revert, and cherry-pick all fall out of it.
 - `Patch`/`Hunk`. Same reason.
 
@@ -146,18 +146,23 @@ Delete a local ref. Often paired with `set_ref` (e.g., rename =
 set_ref(new) + delete_ref(old)).
 
 ```
-compute_merge(base: Rev, ours: Rev, theirs: Rev)
+apply_diff(onto: Rev, from_: Rev, to: Rev)
   -> {tree: sha} | {conflict: List[Path]}
 ```
-3-way merge of trees. Returns a tree sha (no commit, no ref movement),
-or a structured conflict if the merge fails. *This is the single
-primitive that gives us merge, revert, and cherry-pick.*
+Apply the diff `from_ → to` onto the tree of `onto`. Returns the resulting
+tree sha (no commit, no ref movement), or a structured conflict if the
+patch doesn't apply cleanly. Implemented as a 3-way merge with `from_` as
+the base. *This is the single primitive that gives us merge, revert, and
+cherry-pick.*
 
 | Operation | Call |
 |---|---|
-| Cherry-pick C onto H | `compute_merge(base=C^, ours=H, theirs=C)` |
-| Revert C from H | `compute_merge(base=C, ours=H, theirs=C^)` |
-| Merge B into A | `compute_merge(base=common_ancestor(A,B), ours=A, theirs=B)` |
+| Cherry-pick C onto H | `apply_diff(onto=H, from_=C^, to=C)` |
+| Revert C from H | `apply_diff(onto=H, from_=C, to=C^)` |
+| Merge B into A | `apply_diff(onto=A, from_=common_ancestor(A,B), to=B)` |
+
+Revert and cherry-pick are duals: revert is cherry-pick with `from_` and
+`to` swapped (i.e., applying the inverse diff).
 
 Cherry-pick and revert are duals: revert is cherry-pick with `ours` and
 `base` swapped. (Equivalently: revert applies the *inverse* of the diff
@@ -173,7 +178,7 @@ Re-pointing a branch at the new commit is a separate `set_ref` call.
 `TreeSource` is a tagged union:
 - `{from_rev: Rev}` — reuse that rev's tree as-is. Covers amend
   (`from_rev=HEAD`) and squash (`from_rev=HEAD`, with `parents=[HEAD~3]`).
-- `{tree_sha: sha}` — explicit tree sha, typically from `compute_merge`.
+- `{tree_sha: sha}` — explicit tree sha, typically from `apply_diff`.
   Covers revert/cherry-pick/merge.
 - `{from: "INDEX"}` / `{from: "WORKDIR"}` — snapshot the index or working
   tree. Covers normal "I made changes, commit them" flows.
@@ -235,7 +240,7 @@ All 10 eval scenarios decompose into the tools above:
 | `move_commit` | `set_ref(feature-auth, HEAD)` → `set_ref(main, HEAD~1)` |
 | `move_uncommitted` | `set_ref(wip-changes, HEAD)` → `switch_head(wip-changes)` |
 | `squash_commits` | `commit(parents=[HEAD~3], tree={from_rev:HEAD}, msg)` → `set_ref(branch, new_sha)` |
-| `revert_commit` | `compute_merge(base=C, ours=HEAD, theirs=C^)` → `commit(parents=[HEAD], tree={tree_sha:...}, msg)` → `set_ref(branch, new_sha)` |
+| `revert_commit` | `apply_diff(onto=HEAD, from_=C, to=C^)` → `commit(parents=[HEAD], tree={tree_sha:...}, msg)` → `set_ref(branch, new_sha)` |
 | `discard_one_file` | `write_paths(HEAD, ["README.md"], INDEX)` → `write_paths(HEAD, ["README.md"], WORKDIR)` |
 
 Notable: not a single `git`-style verb in the surface. `reset`, `checkout`,
@@ -256,7 +261,7 @@ Sketched assignment per tool:
 | `set_ref(name, target)` | `WritesLocalRef(name)`, plus `MakesUnreachable(C)` for any C reachable from name's old target but not from any other ref after the move, plus `RewritesPublishedHistory` if `name` has a remote-tracking counterpart and the move isn't fast-forward |
 | `delete_ref(name)` | `WritesLocalRef(name)`, plus `MakesUnreachable(...)` for orphaned commits |
 | `commit` | creates an unreferenced object — *no* effects until a `set_ref` makes it reachable |
-| `compute_merge` | none — purely computational, returns a tree object |
+| `apply_diff` | none — purely computational, returns a tree object |
 | `write_paths(target=WORKDIR\|INDEX)` | `LosesUncommitted` if any path being overwritten has changes that aren't recoverable from any commit |
 | `switch_head` | `LosesUncommitted` only if it would silently overwrite dirty paths (we make it fail loudly instead, so this should be rare) |
 | `push(force=true)` | `WritesRemoteRef`, often `RewritesPublishedHistory` |
@@ -279,7 +284,7 @@ unified at the effect level.
 3. **Author/committer fields on `commit`.** Default to git's configured
    identity (matches porcelain). Expose override only if a scenario needs
    it (none do today).
-4. **Conflict surface from `compute_merge`.** Today: return list of
+4. **Conflict surface from `apply_diff`.** Today: return list of
    conflicting paths. Future: return the conflicted tree (with merge
    markers) so the agent can resolve and re-attempt. v1 may punt on
    conflict resolution and just fail loudly.

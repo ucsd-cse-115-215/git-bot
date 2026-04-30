@@ -3,7 +3,7 @@ INSPECT := ./venv/bin/inspect
 FIXTURE_DIR := tmp
 MODEL ?= openai/gpt-5-mini
 
-.PHONY: fixtures messy_solo clean-fixtures inspect-smoke inspect-eval inspect-view
+.PHONY: fixtures messy_solo clean-fixtures inspect-smoke inspect-eval inspect-view test
 
 fixtures: messy_solo
 
@@ -24,3 +24,8 @@ inspect-eval:
 
 inspect-view:
 	$(INSPECT) view --log-dir logs
+
+# Gold-trajectory tests for the git DSL: each eval scenario gets a
+# hand-written sequence of DSL calls and we assert the oracle passes.
+test:
+	PYTHONPATH=. $(PYTHON) -m unittest tests.test_dsl_scenarios -v
