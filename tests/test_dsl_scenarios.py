@@ -22,9 +22,7 @@ from git_dsl import (
     delete_ref,
     inspect_commits,
     inspect_reflog,
-    inspect_refs,
     set_ref,
-    switch_head,
     write_paths,
 )
 from git_dsl.types import TreeFromRev, TreeFromSha
@@ -95,9 +93,9 @@ class RenameBranch(ScenarioTest):
 
         def go(repo: Path) -> None:
             # Old branch is current; create new at the same sha,
-            # switch HEAD onto it, then delete the old.
+            # retarget HEAD's symbolic ref onto it, then delete the old.
             set_ref(repo, s.NEW_NAME, s.OLD_NAME)
-            switch_head(repo, s.NEW_NAME)
+            set_ref(repo, "HEAD", s.NEW_NAME, symbolic=True)
             delete_ref(repo, s.OLD_NAME)
 
         self._run(s, go)
@@ -144,7 +142,7 @@ class MoveUncommitted(ScenarioTest):
 
         def go(repo: Path) -> None:
             set_ref(repo, "wip-changes", "HEAD")
-            switch_head(repo, "wip-changes")
+            set_ref(repo, "HEAD", "wip-changes", symbolic=True)
 
         self._run(s, go)
 

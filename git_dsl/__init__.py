@@ -7,8 +7,12 @@ Public surface:
 
     Read:   inspect_commits, inspect_refs, inspect_reflog,
             inspect_diff, inspect_status, inspect_common_ancestor, read_file
-    Write:  set_ref, delete_ref, apply_diff, commit, write_paths, switch_head
+    Write:  set_ref, delete_ref, apply_diff, commit, write_paths
     Remote: push, fetch
+
+`set_ref` covers both regular ref moves and (with `symbolic=True`)
+retargeting HEAD as a symbolic ref — i.e., what porcelain calls
+`git switch`.
 
 All tools take a `repo: Path` as their first argument; everything else is
 primitive (strings, lists, dicts) so it's trivial to wrap as JSON tools
@@ -29,7 +33,6 @@ from git_dsl.tools import (
     push,
     read_file,
     set_ref,
-    switch_head,
     write_paths,
 )
 from git_dsl.types import (
@@ -55,7 +58,6 @@ __all__ = [
     "apply_diff",
     "commit",
     "write_paths",
-    "switch_head",
     "push",
     "fetch",
     "GitError",

@@ -276,19 +276,28 @@ def set_ref(
     repo: Path,
     name: str,
     target: str,
-    expect_old: Optional[str] = None,
+    symbolic: bool = False,
 ) -> dict:
-    """Create or move a local ref. Workhorse of the DSL."""
+    """Create or move a local ref. Workhorse of the DSL.
+
+    With `symbolic=False` (default), `target` is resolved to a sha and
+    `name` points at that sha. With `symbolic=True`, `target` must itself
+    be a ref name and `name` becomes a symbolic ref to it (this is the
+    usual shape of HEAD).
+    """
     full = _full_ref_name(repo, name)
+    if symbolic:
+        target_full = _full_ref_name(repo, target)
+        old_sha = _git(repo, "rev-parse", "--verify", "-q", full, check=False).stdout.strip()
+        _git(repo, "symbolic-ref", full, target_full)
+        return {
+            "ref": full,
+            "symbolic_target": target_full,
+            "moved_from": old_sha or None,
+        }
     new_sha = _git_out(repo, "rev-parse", target)
     old_sha = _git(repo, "rev-parse", "--verify", "-q", full, check=False).stdout.strip()
-    args = ["update-ref", full, new_sha]
-    if expect_old is not None:
-        args.append(expect_old)
-    elif old_sha:
-        # No optimistic check requested; pass through unchecked.
-        pass
-    _git(repo, *args)
+    _git(repo, "update-ref", full, new_sha)
     return {"ref": full, "moved_from": old_sha or None, "moved_to": new_sha}
 
 
@@ -447,21 +456,6 @@ def write_paths(
             _git(repo, "add", "-A", env_extra=env)
             _git(repo, "read-tree", "--reset", "-u", source, env_extra=env)
     return {"source": source, "target": target, "paths": "all"}
-
-
-def switch_head(repo: Path, ref: str) -> dict:
-    """Move HEAD to point at a different branch. Workdir-aware: fails
-    loudly if dirty paths would be overwritten."""
-    full = _full_ref_name(repo, ref)
-    if full.startswith("refs/heads/"):
-        branch_name = full[len("refs/heads/") :]
-    else:
-        branch_name = ref
-    # `git switch` won't overwrite local mods that conflict with the target.
-    # If trees match (the move_uncommitted case), it succeeds and leaves
-    # the workdir untouched.
-    _git(repo, "switch", branch_name)
-    return {"head_now_at": full}
 
 
 # --------------------------------------------------------------------------

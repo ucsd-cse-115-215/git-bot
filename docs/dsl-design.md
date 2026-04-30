@@ -66,8 +66,8 @@ tree" without separate tools.
 
 ## Tools
 
-Roughly 14 tools, split into **read** (no effects), **write** (local
-effects), and **remote** (network effects).
+13 tools, split into **read** (no effects), **write** (local effects),
+and **remote** (network effects).
 
 ### Read
 
@@ -126,18 +126,30 @@ File contents at any rev (or `INDEX`/`WORKDIR`).
 ### Write — local
 
 ```
-set_ref(name: RefName, target: Rev, expect_old?: sha)
+set_ref(name: RefName, target: Rev | RefName, symbolic: bool = False)
   -> {moved_from: sha, moved_to: sha}
 ```
 **The workhorse.** Creates `name` if it doesn't exist, moves it if it
-does. `expect_old` is optional optimistic-concurrency-style protection
-(fail if the ref doesn't currently point at the expected sha) — useful
-for guardrails.
+does.
+
+With `symbolic=False` (default), `target` is resolved to a sha and `name`
+points at that sha. With `symbolic=True`, `target` must itself be a ref
+name and `name` becomes a *symbolic ref* to it — i.e., it tracks future
+moves of `target`. This is the usual shape of `HEAD`, and it's how we
+express "switch to this branch" without a separate tool:
+`set_ref("HEAD", "main", symbolic=True)`.
 
 This single primitive covers: rename (set new, then delete old),
 recover-from-reflog, undo (`set_ref(branch, HEAD~1)`), move-commit-to-
 branch, the final step of amend/squash/revert/merge (re-pointing the
-branch at the new commit), and force-push prep.
+branch at the new commit), force-push prep, *and* "switch HEAD to a
+different branch." The teaching point: HEAD really is just a ref —
+moving it doesn't deserve its own verb.
+
+`set_ref` *does not touch the workdir or index*, even when retargeting
+HEAD to a branch with a different tree. If the user wants the workdir to
+match the new HEAD, they call `write_paths(HEAD, target=...)`
+separately. (See "Tools don't refuse" below.)
 
 ```
 delete_ref(name: RefName)
@@ -205,17 +217,23 @@ both index and workdir (e.g., `discard_one_file`), the agent makes two
 calls — one per `target`. We considered a `BOTH` mode for atomicity but
 it's not needed for any scenario and complicates the effect inferencer.
 
-```
-switch_head(ref: RefName)
-```
-Move `HEAD` to point at a different branch. Workdir-aware: if the workdir
-is dirty in paths that would be overwritten, this fails (no silent data
-loss).
+### Tools don't refuse
 
-We treat this separately from `set_ref` because (a) `HEAD` is usually a
-*symbolic* ref — `set_ref(HEAD, ...)` is ambiguous (move HEAD itself? or
-move the branch HEAD points at?), and (b) moving HEAD has workdir
-side-effects that other ref moves don't.
+A design rule we apply uniformly: **the tools in this DSL never
+second-guess the caller.** `set_ref` happily orphans commits.
+`write_paths` happily clobbers dirty workdir state. `set_ref(HEAD, X,
+symbolic=True)` happily retargets HEAD even when the workdir is full of
+uncommitted changes that no longer correspond to anything tracked.
+
+This is on purpose. Refusal is a *policy* decision, and policy lives in
+the guardrail layer (computed from the effect set produced by each
+call). Baking refusal into the tool would either preempt that layer or
+inconsistently apply it (only some destructive tools refuse, others
+don't).
+
+So the v1 algebra is: tools are pure transducers from repo state to
+repo state. The guardrail layer is the *only* place where things can be
+denied or require confirmation.
 
 ### Write — remote
 
@@ -235,10 +253,10 @@ All 10 eval scenarios decompose into the tools above:
 | `amend_message` | `commit(parents=parents(HEAD), tree={from_rev:HEAD}, msg=new)` → `set_ref(branch, new_sha)` |
 | `undo_keep` | `set_ref(branch, HEAD~1)` *(workdir untouched, so changes appear as unstaged)* |
 | `undo_discard` | `set_ref(branch, HEAD~1)` → `write_paths(HEAD, target=INDEX)` → `write_paths(HEAD, target=WORKDIR)` |
-| `rename_branch` | `set_ref(new, old_target)` → `switch_head(new)` *(if it was current)* → `delete_ref(old)` |
+| `rename_branch` | `set_ref(new, old_target)` → `set_ref(HEAD, new, symbolic=True)` *(if it was current)* → `delete_ref(old)` |
 | `recover_branch` | `inspect_reflog("HEAD")` to find the deleted tip → `set_ref(experiments, sha)` |
 | `move_commit` | `set_ref(feature-auth, HEAD)` → `set_ref(main, HEAD~1)` |
-| `move_uncommitted` | `set_ref(wip-changes, HEAD)` → `switch_head(wip-changes)` |
+| `move_uncommitted` | `set_ref(wip-changes, HEAD)` → `set_ref(HEAD, wip-changes, symbolic=True)` |
 | `squash_commits` | `commit(parents=[HEAD~3], tree={from_rev:HEAD}, msg)` → `set_ref(branch, new_sha)` |
 | `revert_commit` | `apply_diff(onto=HEAD, from_=C, to=C^)` → `commit(parents=[HEAD], tree={tree_sha:...}, msg)` → `set_ref(branch, new_sha)` |
 | `discard_one_file` | `write_paths(HEAD, ["README.md"], INDEX)` → `write_paths(HEAD, ["README.md"], WORKDIR)` |
@@ -263,7 +281,6 @@ Sketched assignment per tool:
 | `commit` | creates an unreferenced object — *no* effects until a `set_ref` makes it reachable |
 | `apply_diff` | none — purely computational, returns a tree object |
 | `write_paths(target=WORKDIR\|INDEX)` | `LosesUncommitted` if any path being overwritten has changes that aren't recoverable from any commit |
-| `switch_head` | `LosesUncommitted` only if it would silently overwrite dirty paths (we make it fail loudly instead, so this should be rare) |
 | `push(force=true)` | `WritesRemoteRef`, often `RewritesPublishedHistory` |
 | `fetch` | writes remote-tracking refs only — typically benign |
 
