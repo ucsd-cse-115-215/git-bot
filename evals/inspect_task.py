@@ -1,20 +1,23 @@
-"""Inspect AI port of the git-agent eval.
+"""Inspect AI port of the git-agent eval — supports both agents.
 
 Reuses `evals.scenarios.ALL_SCENARIOS` for the data, fixtures, and oracles.
 The orchestration (sample setup, agent loop, scoring, pass@k aggregation,
 trace viewer) is provided by Inspect.
 
 Run:
-    make inspect-smoke    # one scenario, 5 epochs
-    make inspect-eval     # all scenarios, 5 epochs
-    make inspect-view     # open the trace viewer
+    make inspect-smoke               # one scenario, default agent (dsl)
+    make inspect-smoke AGENT=shell   # the legacy bash-tool agent
+    make inspect-eval                # full eval
+    make inspect-view                # open the trace viewer
 """
 
 from __future__ import annotations
 
+import importlib
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 from inspect_ai import Epochs, Task, task
 from inspect_ai.agent import react
@@ -29,10 +32,8 @@ from inspect_ai.scorer import (
     scorer,
 )
 from inspect_ai.solver import Generate, Solver, TaskState, solver
-from inspect_ai.tool import Tool, ToolError, tool
 from inspect_ai.util import store
 
-from agent_shell import INSTRUCTIONS, run_in_repo
 from evals.scenarios import ALL_SCENARIOS
 
 SCENARIOS_BY_NAME = {s.name: s for s in ALL_SCENARIOS}
@@ -42,7 +43,7 @@ SCENARIOS_BY_NAME = {s.name: s for s in ALL_SCENARIOS}
 def build_fixture() -> Solver:
     """Build a fresh fixture in a tmpdir for this trial.
 
-    Stores the repo path and tmpdir root in the per-sample store so the tool
+    Stores the repo path and tmpdir root in the per-sample store so the tools
     and the scorer can read them. Teardown happens in the scorer (always
     runs, even if the agent loop raises).
     """
@@ -56,22 +57,6 @@ def build_fixture() -> Solver:
         return state
 
     return solve
-
-
-@tool
-def execute_command() -> Tool:
-    async def execute(command: str) -> str:
-        """Execute a shell command in the user's git repository.
-
-        Args:
-            command: shell command to execute.
-        """
-        repo_path = store().get("repo_path")
-        if repo_path is None:
-            raise ToolError("repo_path not set for this sample")
-        return run_in_repo(command, repo_path)
-
-    return execute
 
 
 @scorer(metrics=[accuracy()])
@@ -91,7 +76,17 @@ def repo_oracle():
 
 
 @task
-def git_agent_eval() -> Task:
+def git_agent_eval(agent: Literal["dsl", "shell"] = "dsl") -> Task:
+    """The git-agent eval task.
+
+    Args:
+        agent: which agent to evaluate. "dsl" (default) is the v1 typed-tool
+            agent; "shell" is the v0.x bash-tool agent.
+    """
+    if agent not in ("dsl", "shell"):
+        raise ValueError(f"unknown agent: {agent!r}; expected 'dsl' or 'shell'")
+    mod = importlib.import_module(f"agent_{agent}")
+
     samples = [
         Sample(input=s.prompt, target=s.name, id=s.name) for s in ALL_SCENARIOS
     ]
@@ -99,7 +94,7 @@ def git_agent_eval() -> Task:
         dataset=samples,
         solver=[
             build_fixture(),
-            react(prompt=INSTRUCTIONS, tools=[execute_command()]),
+            react(prompt=mod.INSTRUCTIONS, tools=mod.inspect_tools()),
         ],
         scorer=repo_oracle(),
         epochs=Epochs(5, [pass_at(1), pass_at(5)]),

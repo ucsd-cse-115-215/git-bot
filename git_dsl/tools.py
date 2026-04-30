@@ -109,16 +109,18 @@ def inspect_commits(repo: Path, start: str = "HEAD", count: int = 20) -> list[di
 
 def inspect_refs(repo: Path) -> list[dict]:
     """All local branches, tags, remote-tracking refs, plus HEAD."""
+    # `git for-each-ref` doesn't expand `%xNN` escapes (unlike `git log`),
+    # so use a literal tab — refs and shas can't contain tabs.
     out = _git_out(
         repo,
         "for-each-ref",
-        "--format=%(refname)%x1f%(objectname)%x1f%(objecttype)",
+        "--format=%(refname)\t%(objectname)\t%(objecttype)",
     )
     refs: list[dict] = []
     for line in out.splitlines():
         if not line:
             continue
-        name, target, objtype = line.split("\x1f")
+        name, target, objtype = line.split("\t")
         if name.startswith("refs/heads/"):
             kind = "branch"
         elif name.startswith("refs/tags/"):
@@ -149,7 +151,7 @@ def _has_any_commit(repo: Path) -> bool:
 
 def inspect_reflog(repo: Path, ref: str = "HEAD", count: int = 50) -> list[dict]:
     """Reflog entries for a ref. `ref` may be HEAD or any branch name."""
-    fmt = "%H%x1f%gd%x1f%gs%x1f%gI"
+    fmt = "%H%x1f%gd%x1f%gs"
     out = _git(
         repo,
         "reflog",
@@ -165,15 +167,8 @@ def inspect_reflog(repo: Path, ref: str = "HEAD", count: int = 50) -> list[dict]
     for line in out.stdout.splitlines():
         if not line:
             continue
-        sha, selector, message, ts = line.split("\x1f")
-        entries.append(
-            {
-                "sha": sha,
-                "selector": selector,
-                "message": message,
-                "timestamp": ts,
-            }
-        )
+        sha, selector, message = line.split("\x1f")
+        entries.append({"sha": sha, "selector": selector, "message": message})
     return entries
 
 
@@ -402,9 +397,9 @@ def write_paths(
     if target not in ("WORKDIR", "INDEX"):
         raise ValueError(f"target must be WORKDIR or INDEX, got {target!r}")
 
-    path_args = ["--", *paths] if paths else []
-
-    # Cases by source:
+    # WORKDIR / INDEX as source: handle the special / trivial cases, or
+    # resolve to a concrete tree sha so the rest of the function (which
+    # is written for `source = rev`) can do the work uniformly.
     if source == WORKDIR:
         if target == "INDEX":
             # "Stage current workdir state."
@@ -417,18 +412,14 @@ def write_paths(
         return {"source": source, "target": target, "paths": paths or "all", "noop": True}
 
     if source == INDEX:
-        if target == "WORKDIR":
-            # "Restore workdir from index" = `git restore` with no --source.
-            args = ["restore", "--worktree"]
-            if paths:
-                args.extend(["--", *paths])
-            else:
-                args.append(".")
-            _git(repo, *args)
-            return {"source": source, "target": target, "paths": paths or "all"}
-        return {"source": source, "target": target, "paths": paths or "all", "noop": True}
+        if target == "INDEX":
+            return {"source": source, "target": target, "paths": paths or "all", "noop": True}
+        # INDEX → WORKDIR: write the index out to a tree object and let the
+        # rev-source path do a real full-tree replace (or a path-scoped
+        # restore if `paths` is given).
+        source = _git_out(repo, "write-tree")
 
-    # source is a rev.
+    # source is now a rev (concrete tree sha, ref, or rev expr).
     if paths:
         # Path-scoped: standard `git restore` works fine.
         if target == "WORKDIR":

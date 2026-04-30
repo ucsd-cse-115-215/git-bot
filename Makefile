@@ -2,6 +2,9 @@ PYTHON := ./venv/bin/python
 INSPECT := ./venv/bin/inspect
 FIXTURE_DIR := tmp
 MODEL ?= openai/gpt-5-mini
+# Which agent the Inspect eval should target: "dsl" (v1 typed tools)
+# or "shell" (v0.x bash tool). Override with `make ... AGENT=shell`.
+AGENT ?= dsl
 
 .PHONY: fixtures messy_solo clean-fixtures inspect-smoke inspect-eval inspect-view test
 
@@ -16,11 +19,11 @@ clean-fixtures:
 
 # One scenario, full epoch count from task definition. Cheap smoke test.
 inspect-smoke:
-	PYTHONPATH=. $(INSPECT) eval evals/inspect_task.py --model $(MODEL) --limit 1
+	PYTHONPATH=. $(INSPECT) eval evals/inspect_task.py --model $(MODEL) --limit 1 -T agent=$(AGENT)
 
 # Full eval: all scenarios, full epoch count from task definition.
 inspect-eval:
-	PYTHONPATH=. $(INSPECT) eval evals/inspect_task.py --model $(MODEL)
+	PYTHONPATH=. $(INSPECT) eval evals/inspect_task.py --model $(MODEL) -T agent=$(AGENT)
 
 inspect-view:
 	$(INSPECT) view --log-dir logs
